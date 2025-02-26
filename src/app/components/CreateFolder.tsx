@@ -1,58 +1,90 @@
-import React, { useState } from 'react';
-import { Field, Form, Formik } from 'formik';
-import { useCreateFolder } from '../query';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faFolderPlus } from '@fortawesome/free-solid-svg-icons/faFolderPlus';
-import { faXmark } from '@fortawesome/free-solid-svg-icons';
-import { createFolderValidationSchema } from '../validation';
+import React, { useCallback, useMemo, useState } from "react";
+import { Field, Form, Formik } from "formik";
+import { useCreateFolder, useUpdateFolder } from "../query";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faFolderPlus, faEdit, faXmark } from "@fortawesome/free-solid-svg-icons";
+import { createFolderValidationSchema } from "../validation";
 
 interface TFolderModal {
-  folder: any;
+  folder?: { id: string; name: string; description: string };
   isFromMiddleSection: boolean;
 }
-const FolderModal: React.FC<TFolderModal> = ({ folder, isFromMiddleSection }) => {
-  const [isOpen, setIsopen] = useState(false);
+
+type Mode = "ADD" | "EDIT";
+
+const CreateFolderModal: React.FC<TFolderModal> = ({ folder, isFromMiddleSection }) => {
+  const [mode, setMode] = useState<Mode>("ADD");
+  const [isOpen, setIsOpen] = useState(false);
   const { mutateAsync, isPending } = useCreateFolder();
-  const handleClose = () => {
-    setIsopen(!isOpen);
-  };
+  const {mutateAsync:editMutentAsync,isPending:isUpdatePending}=useUpdateFolder();
 
-  const handleClick = () => {
-    setIsopen(!isOpen);
-  };
+  const handleToggleModal = useCallback(() => {
+    setIsOpen((prev) => !prev);
+  }, []);
+console.log('mode',mode)
+  const handleEditClick = useCallback(() => {
+    setMode("EDIT");
+    handleToggleModal();
+  }, [handleToggleModal]);
 
-  
-  const initialValues = {
-    name: '',
-    description: '',
-  };
+  const initialValues = useMemo(
+    () => ({
+      name: mode === "EDIT" && folder ? folder.name : "",
+      description: mode === "EDIT" && folder ? folder.description : "",
+    }),
+    [mode, folder]
+  );
 
-  const handleSubmit = async (values: any) => {
-    try {
-      await mutateAsync({ ...values, parentFolderId: isFromMiddleSection ? folder.id : '' })
-    }
-    catch (error) {
-      console.error(error)
-    }
-    setIsopen(!isOpen);
-  };
+  const handleSubmit = useCallback(
+    async (values: { name: string; description: string }) => {
+      try {
+        if(mode==='ADD'){
+        await mutateAsync({
+          ...values,
+          parentFolderId: isFromMiddleSection && folder ? folder.id : "",
+        });}
+        else{
+          await editMutentAsync({
+           payload:{ ...values},
+            id:folder?.id ?? '' ,
+          });
+        }
+      } catch (error) {
+        console.error(error);
+      }
+      handleToggleModal();
+    },
+    [mutateAsync,editMutentAsync,mode, isFromMiddleSection, folder, handleToggleModal]
+  );
 
   return (
     <div>
+      {isFromMiddleSection && (
+        <button
+          onClick={handleEditClick}
+          className="block px-4 py-2 text-sm text-gray-700 border-y border-gray-300 hover:bg-gray-100 w-full text-left"
+        >
+          <FontAwesomeIcon icon={faEdit} className="mr-2" /> Edit
+        </button>
+      )}
       <button
-        onClick={handleClick}
+        onClick={handleToggleModal}
         className="block px-4 py-2 text-sm text-gray-700 rounded-t-lg hover:bg-gray-100 w-full text-left border-b last:border-0"
       >
-        <FontAwesomeIcon icon={faFolderPlus} className='mr-1' />Create Folder
+        <FontAwesomeIcon icon={faFolderPlus} className="mr-1" />
+        Create Folder
       </button>
       {isOpen && (
         <div className="fixed inset-0 flex items-center justify-center z-50 bg-black bg-opacity-50">
           <div className="bg-white rounded-md w-96">
             <div className="border-b border-gray-300 mb-4 flex justify-between items-center">
-              <p className="text-sm font-semibold px-5 py-3 ">Create Folder</p>
-              <FontAwesomeIcon icon={faXmark}
-                onClick={handleClose}
-                className='mr-5'
+              <p className="text-sm font-semibold px-5 py-3">
+                {mode === "ADD" ? "Create Folder" : "Edit Folder"}
+              </p>
+              <FontAwesomeIcon
+                icon={faXmark}
+                onClick={handleToggleModal}
+                className="mr-5 cursor-pointer"
               />
             </div>
 
@@ -61,8 +93,8 @@ const FolderModal: React.FC<TFolderModal> = ({ folder, isFromMiddleSection }) =>
               validationSchema={createFolderValidationSchema}
               onSubmit={handleSubmit}
             >
-              {({ errors, touched, isSubmitting, isValid }) => (
-                <Form >
+              {({ errors, touched, isSubmitting, isValid, dirty }) => (
+                <Form>
                   <div className="mb-4 px-5">
                     <label htmlFor="name" className="block text-sm font-semibold text-gray-700">
                       Name
@@ -92,21 +124,21 @@ const FolderModal: React.FC<TFolderModal> = ({ folder, isFromMiddleSection }) =>
                       <div className="text-red-500 text-sm mt-1">{errors.description}</div>
                     )}
                   </div>
-                  <div className='border-t border-gray-300' />
+                  <div className="border-t border-gray-300" />
                   <div className="flex justify-end space-x-5 my-4 px-5">
                     <button
                       type="button"
-                      onClick={handleClose}
+                      onClick={handleToggleModal}
                       className="px-4 py-1 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="px-4 py-1 bg-blue-900 text-white rounded-md hover:bg-blue-700"
-                      disabled={isSubmitting || !isValid}
+                      className="px-4 py-1 bg-blue-900 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                      disabled={isSubmitting || !isValid || (mode === "EDIT" && !dirty)}
                     >
-                      Create
+                      {mode === "ADD" ? "Create" : "Save"}
                     </button>
                   </div>
                 </Form>
@@ -119,4 +151,4 @@ const FolderModal: React.FC<TFolderModal> = ({ folder, isFromMiddleSection }) =>
   );
 };
 
-export default FolderModal;
+export default CreateFolderModal;
